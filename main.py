@@ -103,28 +103,15 @@ async def handle_post(
 
 @app.get("/", response_model=AgentResponse)
 async def handle_get(
+    request: IncomingRequest,
     background_tasks: BackgroundTasks,
-    message: str = Query(..., description="The message text"),
-    session_id: str = Query("default-session", description="Session ID"),
     key: str = Depends(verify_api_key),
     test_mode: bool = Query(False, description="Enable test mode to return extracted intelligence")
 ):
     """
-    Handle GET request mapping query params to IncomingRequest.
-    Warning: Does not support passing full conversation history in GET.
+    Handle GET request with JSON payload (forced).
     """
-    # Construct IncomingRequest from simple Query params
-    incoming_req = IncomingRequest(
-        sessionId=session_id,
-        message=MessageItem(
-            sender=SenderType.SCAMMER, 
-            text=message, 
-            timestamp=0
-        ),
-        conversationHistory=[], 
-        metadata=RequestMetadata()
-    )
-    return await process_request_logic(incoming_req, background_tasks, is_test_mode=test_mode)
+    return await process_request_logic(request, background_tasks, is_test_mode=test_mode)
 
 if __name__ == "__main__":
     import uvicorn
