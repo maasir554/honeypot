@@ -25,4 +25,3 @@ class IncomingRequest(BaseModel):
 class AgentResponse(BaseModel):
     status: Literal["success", "error"] = "success"
     reply: str
-    intelligence: Optional[dict] = None

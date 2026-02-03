@@ -55,22 +55,9 @@ def run_tests():
                 
             print(f"✅ Agent Reply: {reply}")
             
-            # Check intelligence extraction
-            intel = data.get("intelligence", {})
-            if intel:
-                print("✅ Intelligence Extracted:")
-                print(json.dumps(intel, indent=2))
-                
-                # Basic assertions on extraction if scammer
-                if payload['message']['sender'] == 'scammer':
-                    # If text had link, we expect link
-                    if "http" in payload['message']['text']:
-                         if not intel.get("phishingLinks"):
-                             print("⚠️ WARNING: Link present in input but not extracted")
-            else:
-                # If it was a user message (safe), intel might be empty or basic, which is fine.
-                print("ℹ️ No intelligence returned (Expected for safe messages or weak signals)")
-                
+            # Note: Intelligence extraction is async callback only now
+            # You can check server logs for [Callback] output
+            
             success_count += 1
             
         except requests.exceptions.RequestException as e:

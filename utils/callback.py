@@ -17,6 +17,12 @@ async def send_final_report(session_id: str, scam_detected: bool, message_count:
         "agentNotes": intelligence.get("agentNotes", "No notes")
     }
     
+    import json
+    print(f"\n[Callback] Sending Final Report | Session: {session_id} | ScamDetected: {scam_detected}")
+    print(f"--- Extracted Intelligence ---")
+    print(json.dumps(intelligence, indent=2))
+    print(f"------------------------------")
+    
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(CALLBACK_URL, json=payload, timeout=10.0)

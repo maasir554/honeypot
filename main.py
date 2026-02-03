@@ -65,25 +65,17 @@ async def process_request_logic(request_data: IncomingRequest, background_tasks:
     history = request_data.conversationHistory
     
     # Stateless Scam Detection:
-    full_history = history + [incoming_msg]
     is_scam = detector.detect(incoming_msg.text, history)
     
     history_for_agent = history + [incoming_msg]
     reply_text = agent.generate_reply(history_for_agent, incoming_msg.text)
     
-    # logger.info(f"[CONVO] Session: {session_id} | AGENT: {reply_text}")
-    
-    # Extract Intelligence
-    # If Test Mode: Run synchronously and return result
-    # If Prod Mode: Run background task based on Scam Detection
-    
-    intelligence_data = None        
     if is_scam:
         # Normal production flow
         agent_msg = MessageItem(sender=SenderType.USER, text=reply_text, timestamp=incoming_msg.timestamp + 1000)
         background_tasks.add_task(process_intelligence, session_id, history_for_agent + [agent_msg], is_scam)
     
-    return AgentResponse(status="success", reply=reply_text, intelligence=intelligence_data)
+    return AgentResponse(status="success", reply=reply_text)
 
 async def process_intelligence(session_id: str, history: list, is_scam: bool):
     if not is_scam:
