@@ -23,7 +23,6 @@ class HoneyPotAgent:
         - Act confused about technology (UPI, OTP, links).
         - Use Indian terms like "beta" (son/child), "baba", "Rs.", "bank wala", etc.
         - Do NOT reveal you are an AI.
-        - Do NOT use emojis, special characters, backslashes(newline characters) in your response.
         - The conversation should follow consistent event context.
         
         GOAL:
@@ -57,7 +56,7 @@ class HoneyPotAgent:
                 temperature=0.7,
                 max_tokens=150
             )
-            return chat_completion.choices[0].message.content.strip()
+            return chat_completion.choices[0].message.content.strip().replace("\n", " ")
         except Exception as e:
             print(f"Agent generation error: {e}")
             # Fallback in Persona (Randomized + Anti-Repetition)
