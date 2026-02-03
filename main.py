@@ -33,12 +33,16 @@ intel_logger.addHandler(intel_handler)
 app = FastAPI(title="Agentic Honey-Pot API")
 
 # Initialize modules
+detector = None
+agent = None
+extractor = None
+
 try:
     detector = ScamDetector()
     agent = HoneyPotAgent()
     extractor = IntelligenceExtractor()
     logger.info("Core modules initialized successfully.")
-except ValueError as e:
+except Exception as e:
     logger.error(f"Initialization failed: {e}")
 
 async def verify_api_key(x_api_key: Optional[str] = Header(None), api_key: Optional[str] = Query(None)):
@@ -50,6 +54,12 @@ async def verify_api_key(x_api_key: Optional[str] = Header(None), api_key: Optio
     return key
 
 async def process_request_logic(request_data: IncomingRequest, background_tasks: BackgroundTasks, is_test_mode: bool = False):
+    global detector, agent, extractor
+    
+    if not detector or not agent:
+        logger.error("Service Unavailable: Core modules not initialized.")
+        raise HTTPException(status_code=503, detail="Service Unavailable: AI modules failed to initialize (Check Server Logs/Env Vars)")
+
     session_id = request_data.sessionId
     incoming_msg = request_data.message
     history = request_data.conversationHistory
