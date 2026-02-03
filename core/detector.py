@@ -1,17 +1,16 @@
 import os
 import json
-import google.generativeai as genai
+from groq import Groq
 from typing import List
 from models.api import MessageItem
 
 class ScamDetector:
     def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
-            raise ValueError("GEMINI_API_KEY not set")
-        genai.configure(api_key=api_key)
-        # Using Gemini 2.0 Flash as requested
-        self.model = genai.GenerativeModel('gemini-3-flash-preview')
+            raise ValueError("GROQ_API_KEY not set")
+        self.client = Groq(api_key=api_key)
+        self.model_name = "moonshotai/kimi-k2-instruct"
 
     def detect(self, message: str, history: List[MessageItem]) -> bool:
         """
@@ -41,9 +40,18 @@ class ScamDetector:
         """
         
         try:
-            response = self.model.generate_content(prompt)
-            # Clean response if it contains markdown code blocks
-            text = response.text.strip()
+            chat_completion = self.client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": "You are a scam detection API. You only output valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                model=self.model_name,
+                temperature=0.1,
+                response_format={"type": "json_object"}
+            )
+            text = chat_completion.choices[0].message.content.strip()
+            
+            # Clean response if it contains markdown code blocks (Groq might treat response_format strictly, but safety first)
             if text.startswith("```json"):
                 text = text[7:]
             if text.endswith("```"):

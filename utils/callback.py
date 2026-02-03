@@ -17,8 +17,6 @@ async def send_final_report(session_id: str, scam_detected: bool, message_count:
         "agentNotes": intelligence.get("agentNotes", "No notes")
     }
     
-    logger.info(f"Sending report for {session_id}: {payload}")
-    
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(CALLBACK_URL, json=payload, timeout=10.0)

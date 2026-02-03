@@ -1,15 +1,17 @@
 import re
 import os
 import json
-import google.generativeai as genai
+from groq import Groq
 from typing import List, Dict, Any
 from models.api import MessageItem
 
 class IntelligenceExtractor:
     def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-2.5-pro')
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError("GROQ_API_KEY not set")
+        self.client = Groq(api_key=api_key)
+        self.model_name = "moonshotai/kimi-k2-instruct"
 
     def extract(self, history: List[MessageItem]) -> Dict[str, Any]:
         """
@@ -47,8 +49,17 @@ class IntelligenceExtractor:
         """
         
         try:
-            response = self.model.generate_content(prompt)
-            text = response.text.strip()
+            chat_completion = self.client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": "You are an intelligence extraction API. You only output valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                model=self.model_name,
+                temperature=0.1,
+                response_format={"type": "json_object"}
+            )
+            text = chat_completion.choices[0].message.content.strip()
+
             if text.startswith("```json"):
                 text = text[7:]
             if text.endswith("```"):

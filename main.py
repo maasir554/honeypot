@@ -1,16 +1,16 @@
 import os
 import logging
-from fastapi import FastAPI, Header, HTTPException, BackgroundTasks, Depends
+from typing import Optional, List
+from fastapi import FastAPI, Header, HTTPException, BackgroundTasks, Depends, Query, Body
 from dotenv import load_dotenv
 
 # Load env before imports that use it
 load_dotenv()
 
-from models.api import IncomingRequest, AgentResponse, SenderType, MessageItem
+from models.api import IncomingRequest, AgentResponse, SenderType, MessageItem, RequestMetadata
 from core.detector import ScamDetector
 from core.agent import HoneyPotAgent
 from core.extractor import IntelligenceExtractor
-from core.manager import SessionManager
 from utils.callback import send_final_report
 
 # Configure logging
@@ -33,7 +33,6 @@ intel_logger.addHandler(intel_handler)
 app = FastAPI(title="Agentic Honey-Pot API")
 
 # Initialize modules
-# We initialize them globally for now. In production, might want dependency injection.
 try:
     detector = ScamDetector()
     agent = HoneyPotAgent()
@@ -41,67 +40,91 @@ try:
     logger.info("Core modules initialized successfully.")
 except ValueError as e:
     logger.error(f"Initialization failed: {e}")
-    # We don't crash the app, but endpoints might fail.
 
-async def verify_api_key(x_api_key: str = Header(...)):
-    # Simple check. In real world, check against a DB or env.
-    # For now, we accept any key or a specific one if set in env.
+async def verify_api_key(x_api_key: Optional[str] = Header(None), api_key: Optional[str] = Query(None)):
+    # Allow passing key via Header OR Query param (for easy GET access via browser/curl)
+    key = x_api_key or api_key
     expected_key = os.getenv("API_KEY") 
-    if expected_key and x_api_key != expected_key:
+    if expected_key and key != expected_key:
         raise HTTPException(status_code=403, detail="Invalid API Key")
-    return x_api_key
+    return key
 
-@app.post("/api/chat", response_model=AgentResponse)
-async def chat_endpoint(request: IncomingRequest, background_tasks: BackgroundTasks, api_key: str = Depends(verify_api_key)):
-    """
-    Main entry point for the Honey-Pot.
-    """
-    session_id = request.sessionId
-    incoming_msg = request.message
+async def process_request_logic(request_data: IncomingRequest, background_tasks: BackgroundTasks, is_test_mode: bool = False):
+    session_id = request_data.sessionId
+    incoming_msg = request_data.message
+    history = request_data.conversationHistory
     
-    SessionManager.add_message(session_id, incoming_msg)
+    # Stateless Scam Detection:
+    full_history = history + [incoming_msg]
+    is_scam = detector.detect(incoming_msg.text, history)
     
-    session_data = SessionManager.get_session(session_id)
-    is_scam = session_data.get("scam_detected", False)
-    
-    if not is_scam:
-        full_history = request.conversationHistory + [incoming_msg]
-        is_scam = detector.detect(incoming_msg.text, request.conversationHistory)
-        
-        if is_scam:
-            logger.info(f"Scam detected for session {session_id}!")
-            SessionManager.set_scam_detected(session_id, True)
-            logger.info(f"[CONVO] Session: {session_id} | SCAM DETECTED | Trigger: {incoming_msg.text}")
-        else:
-            logger.info(f"[CONVO] Session: {session_id} | Message seems safe")
-            
-    logger.info(f"[CONVO] Session: {session_id} | SCAMMER: {incoming_msg.text}")
-
-    history_for_agent = request.conversationHistory + [incoming_msg]
+    history_for_agent = history + [incoming_msg]
     reply_text = agent.generate_reply(history_for_agent, incoming_msg.text)
     
-    logger.info(f"[CONVO] Session: {session_id} | AGENT: {reply_text}")
+    # logger.info(f"[CONVO] Session: {session_id} | AGENT: {reply_text}")
     
-    agent_msg = MessageItem(sender=SenderType.USER, text=reply_text, timestamp=incoming_msg.timestamp + 1000) # Fake ts
-    SessionManager.add_message(session_id, agent_msg)
+    # Extract Intelligence
+    # If Test Mode: Run synchronously and return result
+    # If Prod Mode: Run background task based on Scam Detection
     
+    intelligence_data = None        
     if is_scam:
+        # Normal production flow
+        agent_msg = MessageItem(sender=SenderType.USER, text=reply_text, timestamp=incoming_msg.timestamp + 1000)
         background_tasks.add_task(process_intelligence, session_id, history_for_agent + [agent_msg], is_scam)
     
-    return AgentResponse(status="success", reply=reply_text)
+    return AgentResponse(status="success", reply=reply_text, intelligence=intelligence_data)
 
 async def process_intelligence(session_id: str, history: list, is_scam: bool):
+    if not is_scam:
+        return
+
     try:
         data = extractor.extract(history)
         message_count = len(history)
         
-        # Log to file
-        intel_logger.info(f"Session: {session_id} | Extracted: {data}")
-        
         await send_final_report(session_id, is_scam, message_count, data)
         
     except Exception as e:
-        logger.error(f"Background processing failed: {e}")
+        # logger.error(f"Background processing failed: {e}")
+        pass
+
+@app.post("/", response_model=AgentResponse)
+async def handle_post(
+    request: IncomingRequest, 
+    background_tasks: BackgroundTasks, 
+    key: str = Depends(verify_api_key),
+    x_test_mode: bool = Header(False)
+):
+    """
+    Handle POST request with JSON payload.
+    """
+    return await process_request_logic(request, background_tasks, is_test_mode=x_test_mode)
+
+@app.get("/", response_model=AgentResponse)
+async def handle_get(
+    background_tasks: BackgroundTasks,
+    message: str = Query(..., description="The message text"),
+    session_id: str = Query("default-session", description="Session ID"),
+    key: str = Depends(verify_api_key),
+    test_mode: bool = Query(False, description="Enable test mode to return extracted intelligence")
+):
+    """
+    Handle GET request mapping query params to IncomingRequest.
+    Warning: Does not support passing full conversation history in GET.
+    """
+    # Construct IncomingRequest from simple Query params
+    incoming_req = IncomingRequest(
+        sessionId=session_id,
+        message=MessageItem(
+            sender=SenderType.SCAMMER, 
+            text=message, 
+            timestamp=0
+        ),
+        conversationHistory=[], 
+        metadata=RequestMetadata()
+    )
+    return await process_request_logic(incoming_req, background_tasks, is_test_mode=test_mode)
 
 if __name__ == "__main__":
     import uvicorn

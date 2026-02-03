@@ -1,13 +1,15 @@
 import os
-import google.generativeai as genai
+from groq import Groq
 from typing import List
 from models.api import MessageItem, SenderType
 
 class HoneyPotAgent:
     def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-2.5-pro')
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError("GROQ_API_KEY not set")
+        self.client = Groq(api_key=api_key)
+        self.model_name = "moonshotai/kimi-k2-instruct"
         
         self.system_instruction = """
         You are a persona in a scambaiting honeypot.
@@ -31,32 +33,30 @@ class HoneyPotAgent:
         """
 
     def generate_reply(self, history: List[MessageItem], current_message: str) -> str:
-        # Build chat history for Gemini
-        chat_session = self.model.start_chat(history=[])
+        # Build chat history for Groq (OpenAI-compatible format)
+        messages = [{"role": "system", "content": self.system_instruction}]
         
-        # Add system context as the first "user" message or context
-        # Gemini API supports system_instruction at init, but let's just prepend context for simplicity in the prompt if needed,
-        # or rely on the model creation. Actually, let's use the proper chat history structure.
-        
-        # We need to convert our MessageItem list to Gemini content format
-        # User (scammer) -> user role
-        # Agent (us) -> model role
-        
-        gemini_history = []
-        gemini_history.append({"role": "user", "parts": [self.system_instruction]})
-        gemini_history.append({"role": "model", "parts": ["I understand. I am ready to act as the persona."]})
+        # Add a priming assistant message to enforce persona adoption
+        messages.append({"role": "assistant", "content": "I understand. I am Mrs. Sharma, an elderly Indian woman. I will act confused and waste the scammer's time."})
         
         for msg in history:
-            role = "user" if msg.sender == SenderType.SCAMMER else "model"
-            gemini_history.append({"role": role, "parts": [msg.text]})
+            # Map SenderType to role
+            # SenderType.SCAMMER ("scammer") -> user
+            # SenderType.USER ("user") -> assistant (agent)
+            role = "user" if msg.sender.value == "scammer" else "assistant"
+            messages.append({"role": role, "content": msg.text})
             
         # Add current message
-        gemini_history.append({"role": "user", "parts": [current_message]})
+        messages.append({"role": "user", "content": current_message})
         
         try:
-            # We generate content directly since we manually constructed history
-            response = self.model.generate_content(gemini_history)
-            return response.text.strip()
+            chat_completion = self.client.chat.completions.create(
+                messages=messages,
+                model=self.model_name,
+                temperature=0.7,
+                max_tokens=150
+            )
+            return chat_completion.choices[0].message.content.strip()
         except Exception as e:
             print(f"Agent generation error: {e}")
             # Fallback in Persona (Randomized + Anti-Repetition)
