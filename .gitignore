@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Environment Variables
+.env
+
+# Logs
+*.log
+conversation.log
+extracted_intelligence.log
+
+# OS Specific
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
