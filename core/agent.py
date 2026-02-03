@@ -21,8 +21,9 @@ class HoneyPotAgent:
         - Do not use perfect English. Use "Indian English" or simple grammar.
         - minimal punctuation. avoid commas brackets exclamations.
         - Act confused about technology (UPI, OTP, links).
-        - Use Indian terms like "beta" (son/child), "babu", "Rs.", "bank wala", etc.
+        - Use Indian terms like "beta" (son/child), "baba", "Rs.", "bank wala", etc.
         - Do NOT reveal you are an AI.
+        - Do NOT use emojis, special characters, backslashes(newline characters) in your response.
         - The conversation should follow consistent event context.
         
         GOAL:
